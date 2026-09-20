@@ -58,7 +58,8 @@ img{-webkit-user-drag:none;user-drag:none}
 .tile img{width:100%;height:100%;display:block;pointer-events:none}
 .tile .bl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#9a3d12;font-size:calc(var(--cell)*.62);line-height:1;padding-bottom:6%}
 .tile.pending{z-index:2;touch-action:none;box-shadow:0 0 0 2px var(--accent),0 4px 8px rgba(0,0,0,.45)}
-.tile.last{box-shadow:0 0 0 2px var(--gold),0 1px 2px rgba(0,0,0,.5)}
+.tile.hl{z-index:3;box-shadow:0 0 0 3px #ffd54a,0 0 16px 5px rgba(255,213,74,.95);animation:hlpulse 1s ease-in-out infinite}
+@keyframes hlpulse{50%{box-shadow:0 0 0 3px #ffd54a,0 0 26px 9px rgba(255,213,74,1)}}
 .tile.dragging{opacity:.3}
 #toast{position:absolute;left:50%;top:10px;transform:translate(-50%,-8px);max-width:86%;padding:10px 16px;border-radius:10px;background:rgba(24,8,12,.92);color:#fff;font-size:16px;line-height:1.3;text-align:center;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:20}
 #toast.show{opacity:1;transform:translate(-50%,0)}
@@ -68,9 +69,9 @@ img{-webkit-user-drag:none;user-drag:none}
 /* landscape: the current player and letters sit in the right column so the board can use the full height */
 #app.land #side{align-items:center}
 #app.land #side>*{width:100%;max-width:var(--sidew);box-sizing:border-box}
-#app.land #bar{display:block;padding:10px 8px 12px;border-radius:12px;flex:0 0 auto;margin-top:auto}
+#app.land #bar{display:block;padding:10px 6px 12px;border-radius:12px;flex:0 0 auto;margin-top:auto}
 #app.land #who{max-width:none;font-size:24px;margin-bottom:8px;text-align:center}
-#app.land #rack{display:grid;grid-template-columns:repeat(var(--rc,7),var(--rt));gap:6px;justify-content:center}
+#app.land #rack{display:grid;grid-template-columns:repeat(7,var(--rt));gap:3px;justify-content:center}
 #app.land #reveal{grid-column:1 / -1;width:100%;min-height:64px;white-space:nowrap}
 #who{flex:0 1 auto;min-width:0;max-width:34%;font-size:clamp(20px,calc(var(--barh)*.34),34px);font-weight:700;line-height:1.05;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #rack{flex:1 1 auto;display:flex;justify-content:flex-end;align-items:center;gap:5px;min-width:0}
@@ -130,7 +131,19 @@ img{-webkit-user-drag:none;user-drag:none}
 .swap .st img{width:100%;height:100%;display:block}
 .res{display:flex;justify-content:space-between;font-size:20px;padding:8px 0;border-bottom:1px solid var(--line)}
 .res.win{font-weight:700}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.def-in{width:100%;box-sizing:border-box;font:inherit;font-size:20px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:transparent;color:var(--ink);margin:4px 0 8px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px}
+.chip{min-height:40px;padding:0 14px;border-radius:20px;border:1.5px solid var(--line);background:transparent;color:var(--ink);font-weight:700;font-size:17px}
+.chip:active{background:var(--accent);color:#fff}
+.chipcap{font-size:14px;color:var(--muted);margin:4px 0 2px}
+.defgo{width:100%;min-height:48px}
+#defOut{margin-top:12px;font-size:16px;line-height:1.4;color:var(--ink);max-height:36vh;overflow:auto;-webkit-overflow-scrolling:touch}
+#defOut .dw{font-size:22px;font-weight:700;margin-bottom:2px}
+#defOut .dl{font-size:14px;color:var(--muted);margin-bottom:8px}
+#defOut .pos{font-style:italic;color:var(--muted);margin-top:8px}
+#defOut ol{margin:2px 0 0;padding-left:22px}
+#defOut a{color:var(--accent);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
@@ -151,6 +164,7 @@ img{-webkit-user-drag:none;user-drag:none}
         <button class="btn" id="bShuffle">Shuffle</button>
         <button class="btn" id="bSwap">Swap tiles</button>
         <button class="btn" id="bPass">Pass</button>
+        <button class="btn wide" id="bDefine">Definition</button>
       </div>
       <div id="hint"></div>
       <div class="linkrow"><button class="linkbtn" id="bNew">New game</button><button class="linkbtn" id="bFull">Full screen</button></div>
@@ -272837,8 +272851,8 @@ function newGame(first){
   var bag=[], id=0;
   Object.keys(DIST).forEach(function(ch){ for(var k=0;k<DIST[ch];k++){ bag.push({id:id++,ch:ch,as:null}); } });
   shuffle(bag);
-  S = { v:1, players: PLAYERS.map(function(n){ return {name:n,score:0,rack:new Array(7).fill(null)}; }),
-        bag:bag, board:emptyBoard(), pending:[], turn:first, phase:'cover', scoreless:0, log:[], last:[] };
+  S = { v:1, players: PLAYERS.map(function(n){ return {name:n,score:0,swapUsed:false,rack:new Array(7).fill(null)}; }),
+        bag:bag, board:emptyBoard(), pending:[], turn:first, phase:'cover', scoreless:0, log:[], lastCells:[], lastWords:[] };
   S.players.forEach(function(p){ fillRack(p); });
   sel=null; save(); render();
 }
@@ -272859,21 +272873,16 @@ function layout(){
   var W=app.clientWidth, H=app.clientHeight;
   var port = H > W;
   var bar = port ? 92 : Math.max(72, Math.min(104, Math.round(H*0.12)));
-  var sideW = Math.max(270, Math.min(320, Math.round(W*0.24)));
-  var board = port ? Math.min(W, H-bar-210) : Math.min(H, W-sideW);
+  var board = port ? Math.min(W, H-bar-210) : Math.min(H, W-300);
   board = Math.max(280, Math.floor(board));
+  var sideW = port ? 320 : Math.max(250, Math.min(380, W-board-24));
   app.classList.toggle('port', port); app.classList.toggle('land', !port);
-  var st=app.style, rt, rc=7;
+  var st=app.style, rt;
   if(port){ rt = Math.max(40, Math.min(bar-18, (W-144)/7-4)); }
-  else {
-    var elemW = Math.min(sideW, W-board-24), inner = elemW - 16, rt7=(inner-36)/7;
-    if(rt7>=52){ rt=Math.min(rt7,68); }
-    else { rc=4; rt=Math.min((inner-18)/4,76); }
-  }
+  else { rt = Math.min(68, Math.floor((sideW-12-18)/7)); }   // all seven letters on one line
   st.setProperty('--board', board+'px');
   st.setProperty('--sidew', sideW+'px');
   st.setProperty('--barh', bar+'px');
-  st.setProperty('--rc', rc);
   st.setProperty('--cell', (board*0.96899/15)+'px');
   st.setProperty('--rt', Math.round(rt)+'px');
   // landscape: name and letters live in the right column; portrait: bar sits under the board
@@ -272891,7 +272900,16 @@ function tileEl(t, cls){
   return d;
 }
 function pendingAt(r,c){ for(var i=0;i<S.pending.length;i++){ var p=S.pending[i]; if(p.r===r&&p.c===c) return p; } return null; }
-function isLast(r,c){ for(var i=0;i<S.last.length;i++){ if(S.last[i][0]===r&&S.last[i][1]===c) return true; } return false; }
+var hlUntil=0, hlTimer=null;
+function inHl(r,c){
+  if(Date.now()>=hlUntil) return false;
+  var L=S.lastCells||[]; for(var i=0;i<L.length;i++){ if(L[i][0]===r&&L[i][1]===c) return true; } return false;
+}
+function startHighlight(){
+  if(!S.lastCells || !S.lastCells.length) return;
+  hlUntil=Date.now()+5000; clearTimeout(hlTimer);
+  hlTimer=setTimeout(function(){ hlUntil=0; document.querySelectorAll('.tile.hl').forEach(function(el){ el.classList.remove('hl'); }); },5000);
+}
 
 function buildCells(){
   cellsEl.innerHTML='';
@@ -272906,7 +272924,7 @@ function render(){
   for(var r=0;r<15;r++){ for(var c=0;c<15;c++){
     var el=cells[r*15+c]; el.innerHTML='';
     var b=S.board[r][c], p=pendingAt(r,c);
-    if(b){ el.appendChild(tileEl(b, isLast(r,c)?'last':'')); }
+    if(b){ el.appendChild(tileEl(b, inHl(r,c)?'hl':'')); }
     else if(p){ var te=tileEl(p.tile,'pending'); te.dataset.src='board'; el.appendChild(te); }
   }}
   renderRack(); renderSide();
@@ -272918,7 +272936,7 @@ function renderRack(){
   var p=cur(); who.textContent=p.name;
   if(S.phase==='cover'){
     var b=document.createElement('button'); b.id='reveal'; b.textContent='Show '+p.name+'\u2019s letters';
-    b.addEventListener('click',function(){ S.phase='play'; save(); render(); });
+    b.addEventListener('click',function(){ S.phase='play'; startHighlight(); save(); render(); });
     rackEl.appendChild(b); return;
   }
   for(var i=0;i<7;i++){
@@ -272954,6 +272972,9 @@ function renderSide(){
   else hint=a.msg;
   $('hint').textContent=hint;
   ['bRecall','bShuffle','bSwap','bPass'].forEach(function(id){ $(id).disabled=!playing; });
+  var swapUsed = !!(S.players[S.turn] && S.players[S.turn].swapUsed);
+  $('bSwap').textContent = swapUsed ? 'Swap used' : 'Swap tiles';
+  $('bSwap').disabled = !playing || swapUsed;
   $('bRecall').disabled = !(playing && S.pending.length);
 }
 
@@ -273065,7 +273086,7 @@ function analyze(){
       sum+=v;
     });
     var pts=sum*mult; total+=pts;
-    out.push({text:w.map(function(x){ return letterOf(x.tile); }).join(''), pts:pts});
+    out.push({text:w.map(function(x){ return letterOf(x.tile); }).join(''), pts:pts, cells:w.map(function(x){ return [x.r,x.c]; })});
   });
   var bingo = P.length===7; if(bingo) total+=50;
   return {ok:true, words:out, total:total, bingo:bingo};
@@ -273083,10 +273104,10 @@ function playMove(){
 }
 function commit(a){
   var p=cur();
-  S.last=S.pending.map(function(pd){ return [pd.r,pd.c]; });
   S.pending.forEach(function(pd){ S.board[pd.r][pd.c]={ch:pd.tile.ch, as:pd.tile.as, id:pd.tile.id}; });
   S.pending=[]; p.score+=a.total; S.scoreless=0;
-  var main=a.words.slice().sort(function(x,y){ return y.pts-x.pts; })[0].text;
+  var mainW=a.words.slice().sort(function(x,y){ return (y.pts-x.pts) || (y.text.length-x.text.length); })[0];
+  var main=mainW.text; S.lastCells=mainW.cells; S.lastWords=a.words.map(function(w){ return w.text; });
   S.log.push({p:p.name,text:main+(a.words.length>1?' +'+(a.words.length-1):''),pts:a.total});
   fillRack(p); sel=null;
   toast(p.name+' played '+main+' for '+a.total+'.');
@@ -273104,7 +273125,7 @@ function doSwap(tiles){
   tiles.forEach(function(idx){ var t=p.rack[idx]; if(t.ch==='_') t.as=null; S.bag.push(t); p.rack[idx]=null; });
   shuffle(S.bag);
   var gi=0; tiles.forEach(function(idx){ p.rack[idx]=got[gi++]; });
-  S.scoreless++; S.log.push({p:p.name,text:'swapped '+n+' tile'+(n===1?'':'s'),pts:0});
+  p.swapUsed=true; S.scoreless++; S.log.push({p:p.name,text:'swapped '+n+' tile'+(n===1?'':'s'),pts:0});
   if(S.scoreless>=6){ finish('stalled'); return; }
   nextTurn();
 }
@@ -273137,6 +273158,7 @@ $('bShuffle').addEventListener('click', function(){
   save(); render();
 });
 $('bSwap').addEventListener('click', function(){
+  if(cur().swapUsed){ toast('You have already used your swap this game.'); return; }
   if(S.bag.length<7){ toast('Swapping needs at least 7 tiles in the bag.'); return; }
   recallAll(); render();
   var p=cur(), chosen={}, body=document.createElement('div'); body.className='swap';
@@ -273148,7 +273170,7 @@ $('bSwap').addEventListener('click', function(){
   });
   var go;
   function upd(){ var n=Object.keys(chosen).length; if(go){ go.disabled=(n===0); go.textContent=n? 'Swap '+n+' tile'+(n===1?'':'s') : 'Swap'; } }
-  openModal({title:'Swap tiles', text:'Tap the tiles you want to swap. This uses your turn.', body:body,
+  openModal({title:'Swap tiles', text:'Tap the tiles you want to swap. Swapping ends your turn, and each player gets only one swap per game.', body:body,
     buttons:[{label:'Cancel'},{label:'Swap',kind:'primary',keepOpen:true,onClick:function(){
       var idx=Object.keys(chosen).map(Number); if(!idx.length) return; closeModal(); doSwap(idx); }}]});
   go=$('dlg').querySelector('.btn.primary'); upd();
@@ -273184,9 +273206,9 @@ window.addEventListener('pointermove', function(e){
   var dx=e.clientX-drag.sx, dy=e.clientY-drag.sy;
   if(!drag.moved && Math.hypot(dx,dy)>8){
     drag.moved=true;
-    var size=parseFloat(getComputedStyle(app).getPropertyValue('--rt'))||56;
+    var size=Math.max(parseFloat(getComputedStyle(app).getPropertyValue('--rt'))||56, parseFloat(getComputedStyle(app).getPropertyValue('--cell'))||0);
     var g=document.createElement('div'); g.className='ghost'; g.style.width=g.style.height=(size*1.1)+'px';
-    g.appendChild(drag.el.cloneNode(true)); g.firstChild.classList.remove('sel','pending','last');
+    g.appendChild(drag.el.cloneNode(true)); g.firstChild.classList.remove('sel','pending','hl');
     var bl=g.querySelector('.bl'); if(bl) bl.style.fontSize=(size*1.1*0.62)+'px';
     document.body.appendChild(g); drag.ghost=g; drag.size=size*1.1; drag.el.classList.add('dragging');
   }
@@ -273225,6 +273247,78 @@ window.addEventListener('pointercancel', function(e){ endDrag(e,true); });
 document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
 document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 
+/* ---------- word definitions (needs an internet connection) ---------- */
+function plain(html){ try{ return (new DOMParser().parseFromString(html,'text/html').body.textContent||'').trim(); }catch(e){ return ''; } }
+function fetchJSON(url, ms){
+  var ctl = ('AbortController' in window) ? new AbortController() : null;
+  var to = setTimeout(function(){ if(ctl) ctl.abort(); }, ms);
+  return fetch(url, ctl ? {signal:ctl.signal} : {}).then(function(r){ clearTimeout(to); if(!r.ok) throw new Error('http'); return r.json(); },
+                                                       function(e){ clearTimeout(to); throw e; });
+}
+function lookupWord(word){
+  var w=encodeURIComponent(word);
+  return fetchJSON('https://api.dictionaryapi.dev/api/v2/entries/en/'+w, 7000).then(function(d){
+    var out=[];
+    (d||[]).forEach(function(e){ (e.meanings||[]).forEach(function(m){
+      var defs=(m.definitions||[]).map(function(x){ return x.definition; }).filter(Boolean);
+      if(defs.length) out.push({pos:m.partOfSpeech||'',defs:defs}); }); });
+    if(!out.length) throw new Error('none'); return out;
+  }).catch(function(){
+    return fetchJSON('https://en.wiktionary.org/api/rest_v1/page/definition/'+w, 7000).then(function(d){
+      var out=[];
+      (d.en||[]).forEach(function(m){
+        var defs=(m.definitions||[]).map(function(x){ return plain(x.definition); }).filter(Boolean);
+        if(defs.length) out.push({pos:(m.partOfSpeech||'').toLowerCase(), defs:defs}); });
+      if(!out.length) throw new Error('none'); return out;
+    });
+  });
+}
+function openDefine(){
+  var body=document.createElement('div');
+  var words=[];
+  (S.lastWords||[]).forEach(function(w){ if(words.indexOf(w)<0) words.push(w); });
+  if(S.phase==='play' && S.pending.length){ var a=analyze(); if(a.ok) a.words.forEach(function(w){ if(words.indexOf(w.text)<0) words.push(w.text); }); }
+  var inp=document.createElement('input'); inp.type='text'; inp.className='def-in'; inp.placeholder='Type a word';
+  inp.setAttribute('autocapitalize','none'); inp.setAttribute('autocomplete','off'); inp.setAttribute('autocorrect','off'); inp.setAttribute('spellcheck','false');
+  var go=document.createElement('button'); go.className='btn primary defgo'; go.textContent='Look up';
+  var out=document.createElement('div'); out.id='defOut';
+  function show(word){
+    word=(word||'').toLowerCase().replace(/[^a-z]/g,''); if(!word) return;
+    inp.value=word; out.innerHTML='';
+    var h=document.createElement('div'); h.className='dw'; h.textContent=word.toUpperCase(); out.appendChild(h);
+    var l=document.createElement('div'); l.className='dl'; l.textContent=DICT.has(word)?'In the game\u2019s word list':'Not in the game\u2019s word list'; out.appendChild(l);
+    var st=document.createElement('div'); st.textContent='Looking up\u2026'; out.appendChild(st);
+    lookupWord(word).then(function(list){
+      if(inp.value!==word) return;
+      out.removeChild(st);
+      list.slice(0,4).forEach(function(m){
+        if(m.pos){ var p=document.createElement('div'); p.className='pos'; p.textContent=m.pos; out.appendChild(p); }
+        var ol=document.createElement('ol');
+        m.defs.slice(0,3).forEach(function(d){ var li=document.createElement('li'); li.textContent=d; ol.appendChild(li); });
+        out.appendChild(ol);
+      });
+    }, function(){
+      if(inp.value!==word) return;
+      st.textContent='No definition found. It may be slang, or there may be no internet connection. Try: ';
+      [['Merriam-Webster','https://www.merriam-webster.com/dictionary/'+word],['Wiktionary','https://en.wiktionary.org/wiki/'+word]].forEach(function(x,i){
+        if(i) st.appendChild(document.createTextNode(' or '));
+        var a=document.createElement('a'); a.href=x[1]; a.target='_blank'; a.rel='noopener'; a.textContent=x[0]; st.appendChild(a);
+      });
+    });
+  }
+  if(words.length){
+    var cap=document.createElement('div'); cap.className='chipcap'; cap.textContent='Words on the board'; body.appendChild(cap);
+    var chips=document.createElement('div'); chips.className='chips';
+    words.forEach(function(w){ var c=document.createElement('button'); c.className='chip'; c.textContent=w; c.addEventListener('click',function(){ show(w); }); chips.appendChild(c); });
+    body.appendChild(chips);
+  }
+  body.appendChild(inp); body.appendChild(go); body.appendChild(out);
+  go.addEventListener('click',function(){ show(inp.value); });
+  inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); show(inp.value); } });
+  openModal({title:'Definition', body:body, buttons:[{label:'Close'}]});
+}
+$('bDefine').addEventListener('click', openDefine);
+
 /* ---------- full screen ---------- */
 function fsElem(){ return document.fullscreenElement || document.webkitFullscreenElement; }
 $('bFull').addEventListener('click', function(){
@@ -273243,8 +273337,8 @@ window.addEventListener('resize', layout);
 window.addEventListener('orientationchange', function(){ setTimeout(layout,150); });
 buildCells(); layout();
 S = load();
-if(S){ S.pending=S.pending||[]; S.last=S.last||[]; if(S.phase==='play') { /* keep letters hidden after a reload */ S.phase='cover'; } render(); if(S.phase==='over'){ /* stay on final board */ } }
-else { S={v:1,players:PLAYERS.map(function(n){return {name:n,score:0,rack:new Array(7).fill(null)};}),bag:[],board:emptyBoard(),pending:[],turn:0,phase:'over',scoreless:0,log:[],last:[]}; S.phase='cover'; render(); chooseFirst(); }
+if(S){ S.pending=S.pending||[]; S.lastCells=S.lastCells||[]; S.lastWords=S.lastWords||[]; S.players.forEach(function(p){ if(p.swapUsed==null) p.swapUsed=false; }); if(S.phase==='play') { /* keep letters hidden after a reload */ S.phase='cover'; } render(); if(S.phase==='over'){ /* stay on final board */ } }
+else { S={v:1,players:PLAYERS.map(function(n){return {name:n,score:0,swapUsed:false,rack:new Array(7).fill(null)};}),bag:[],board:emptyBoard(),pending:[],turn:0,phase:'over',scoreless:0,log:[],lastCells:[],lastWords:[]}; S.phase='cover'; render(); chooseFirst(); }
 })();
 </script>
 </body>
