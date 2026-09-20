@@ -47,7 +47,7 @@ img{-webkit-user-drag:none;user-drag:none}
 
 #app{position:relative;width:100%;height:100%;display:grid;background:var(--bg)}
 #app.land{grid-template-columns:var(--board) 1fr;grid-template-rows:var(--board) 1fr;grid-template-areas:"board side" "pad side"}
-#app.port{grid-template-columns:1fr;grid-template-rows:var(--board) var(--barh) 1fr;grid-template-areas:"board" "bar" "side"}
+#app.port{grid-template-columns:1fr;grid-template-rows:var(--board) auto var(--barh) 1fr;grid-template-areas:"board" "play" "bar" "side"}
 
 /* board */
 #board{grid-area:board;position:relative;width:var(--board);height:var(--board);background:#000}
@@ -69,7 +69,10 @@ img{-webkit-user-drag:none;user-drag:none}
 /* landscape: the current player and letters sit in the right column so the board can use the full height */
 #app.land #side{align-items:center}
 #app.land #side>*{width:100%;max-width:var(--sidew);box-sizing:border-box}
-#app.land #bar{display:block;padding:10px 6px 12px;border-radius:12px;flex:0 0 auto;margin-top:auto}
+#app.land #bar{display:block;padding:10px 6px 12px;border-radius:12px;flex:0 0 auto}
+#playBox{display:flex;flex-direction:column;gap:6px}
+#app.land #playBox{margin-top:auto;flex:0 0 auto}
+#app.port #playBox{grid-area:play;padding:8px 12px 0;box-sizing:border-box}
 #app.land #who{max-width:none;font-size:24px;margin-bottom:8px;text-align:center}
 #app.land #rack{display:grid;grid-template-columns:repeat(7,var(--rt));gap:3px;justify-content:center}
 #app.land #reveal{grid-column:1 / -1;width:100%;min-height:64px;white-space:nowrap}
@@ -91,7 +94,7 @@ img{-webkit-user-drag:none;user-drag:none}
 #app.port #board{justify-self:center}
 #app.port #actions{grid-template-columns:repeat(4,1fr)}
 #app.port #actions .btn{min-height:44px;font-size:16px}
-#app.port #actions .btn.primary{grid-column:1 / -1;min-height:52px}
+#app.port #bPlay{min-height:52px}
 #scores{display:flex;flex-direction:column;align-items:center;gap:8px}
 .pl{display:block;box-sizing:border-box;width:25%;min-width:84px;padding:6px 8px 8px;border-radius:12px;color:var(--cream);border:1.5px solid rgba(245,236,219,.35);text-align:center}
 .pl .n{display:block;font-size:16px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -137,11 +140,19 @@ img{-webkit-user-drag:none;user-drag:none}
 .chip:active{background:var(--accent);color:#fff}
 .chipcap{font-size:14px;color:var(--muted);margin:4px 0 2px}
 .defgo{width:100%;min-height:48px}
-#defOut{margin-top:12px;font-size:16px;line-height:1.4;color:var(--ink);max-height:36vh;overflow:auto;-webkit-overflow-scrolling:touch}
+#defOut{margin-top:12px;font-size:16px;line-height:1.4;color:var(--ink);max-height:42vh;overflow:auto;-webkit-overflow-scrolling:touch}
 #defOut .dw{font-size:22px;font-weight:700;margin-bottom:2px}
 #defOut .dl{font-size:14px;color:var(--muted);margin-bottom:8px}
 #defOut .pos{font-style:italic;color:var(--muted);margin-top:8px}
 #defOut ol{margin:2px 0 0;padding-left:22px}
+#defOut .src{margin-top:12px;padding-top:8px;border-top:1px solid var(--line)}
+#defOut .sl{font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--muted);margin-bottom:2px}
+#defOut .sb.none{color:var(--muted);font-size:14px}
+#defOut .ud{margin-top:6px}
+#defOut .ex{font-style:italic;color:var(--muted);font-size:14px;margin-top:2px}
+#dlg .keylink{color:var(--muted);padding:10px 2px}
+#dlg .keybox{margin-top:4px}
+#dlg .linkbtn{color:var(--accent)}
 #defOut a{color:var(--accent);font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -159,16 +170,15 @@ img{-webkit-user-drag:none;user-drag:none}
     <div id="bagbox"><span id="bagN">0</span><span id="bagL">tiles left in the bag</span></div>
     <section>
       <div id="actions">
-        <button class="btn primary wide" id="bPlay">Play</button>
         <button class="btn" id="bRecall">Recall</button>
         <button class="btn" id="bShuffle">Shuffle</button>
         <button class="btn" id="bSwap">Swap tiles</button>
         <button class="btn" id="bPass">Pass</button>
         <button class="btn wide" id="bDefine">Definition</button>
       </div>
-      <div id="hint"></div>
       <div class="linkrow"><button class="linkbtn" id="bNew">New game</button><button class="linkbtn" id="bFull">Full screen</button></div>
     </section>
+    <div id="playBox"><div id="hint"></div><button class="btn primary" id="bPlay">Play</button></div>
 
   </div>
   <div id="modal"><div id="dlg"></div></div>
@@ -272873,9 +272883,11 @@ function layout(){
   var W=app.clientWidth, H=app.clientHeight;
   var port = H > W;
   var bar = port ? 92 : Math.max(72, Math.min(104, Math.round(H*0.12)));
-  var board = port ? Math.min(W, H-bar-210) : Math.min(H, W-300);
+  // right column is 30% wider than before so the letters are larger; the board gives up the difference
+  var prevSide = Math.max(250, Math.min(380, W - Math.min(H, W-300) - 24));
+  var sideW = port ? 320 : Math.min(440, Math.round(prevSide*1.3));
+  var board = port ? Math.min(W, H-bar-300) : Math.min(H, W-sideW-24);
   board = Math.max(280, Math.floor(board));
-  var sideW = port ? 320 : Math.max(250, Math.min(380, W-board-24));
   app.classList.toggle('port', port); app.classList.toggle('land', !port);
   var st=app.style, rt;
   if(port){ rt = Math.max(40, Math.min(bar-18, (W-144)/7-4)); }
@@ -272887,8 +272899,14 @@ function layout(){
   st.setProperty('--rt', Math.round(rt)+'px');
   // landscape: name and letters live in the right column; portrait: bar sits under the board
   var barEl=$('bar'), side=$('side');
-  if(!port && barEl.parentNode!==side){ side.appendChild(barEl); }
-  if(port && barEl.parentNode!==app){ app.insertBefore(barEl, side); }
+  var pb=$('playBox');
+  if(!port){
+    if(barEl.parentNode!==side) side.appendChild(barEl);
+    if(pb.parentNode!==side || pb.nextSibling!==barEl) side.insertBefore(pb, barEl);
+  } else {
+    if(barEl.parentNode!==app) app.insertBefore(barEl, side);
+    if(pb.parentNode!==app || pb.nextSibling!==barEl) app.insertBefore(pb, barEl);
+  }
 }
 
 /* ---------- rendering ---------- */
@@ -272967,7 +272985,7 @@ function renderSide(){
   var hint='';
   if(S.phase==='cover') hint='Pass the iPad to '+cur().name+', then tap to show the letters.';
   else if(S.phase==='over') hint='Game over.';
-  else if(!S.pending.length) hint='Drag a tile onto the board, or tap a tile and then a square.';
+  else if(!S.pending.length) hint='';
   else if(a.ok){ hint=a.words.map(function(w){ return w.text+' '+w.pts; }).join(', ')+(a.bingo?', bonus 50':''); }
   else hint=a.msg;
   $('hint').textContent=hint;
@@ -273252,27 +273270,68 @@ function plain(html){ try{ return (new DOMParser().parseFromString(html,'text/ht
 function fetchJSON(url, ms){
   var ctl = ('AbortController' in window) ? new AbortController() : null;
   var to = setTimeout(function(){ if(ctl) ctl.abort(); }, ms);
-  return fetch(url, ctl ? {signal:ctl.signal} : {}).then(function(r){ clearTimeout(to); if(!r.ok) throw new Error('http'); return r.json(); },
-                                                       function(e){ clearTimeout(to); throw e; });
+  return fetch(url, ctl ? {signal:ctl.signal} : {}).then(function(r){ clearTimeout(to); if(!r.ok) throw new Error('http '+r.status); return r.json(); },
+                                                       function(e){ clearTimeout(to); throw new Error((e&&e.name==='AbortError')?'timed out':'blocked or offline'); });
 }
-function lookupWord(word){
-  var w=encodeURIComponent(word);
-  return fetchJSON('https://api.dictionaryapi.dev/api/v2/entries/en/'+w, 7000).then(function(d){
+function trunc(s,n){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0,n-1).trim()+'\u2026' : s; }
+
+/* general dictionary 1: Free Dictionary API */
+function fdLookup(word){
+  return fetchJSON('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(word), 7000).then(function(d){
     var out=[];
     (d||[]).forEach(function(e){ (e.meanings||[]).forEach(function(m){
       var defs=(m.definitions||[]).map(function(x){ return x.definition; }).filter(Boolean);
       if(defs.length) out.push({pos:m.partOfSpeech||'',defs:defs}); }); });
     if(!out.length) throw new Error('none'); return out;
-  }).catch(function(){
-    return fetchJSON('https://en.wiktionary.org/api/rest_v1/page/definition/'+w, 7000).then(function(d){
-      var out=[];
-      (d.en||[]).forEach(function(m){
-        var defs=(m.definitions||[]).map(function(x){ return plain(x.definition); }).filter(Boolean);
-        if(defs.length) out.push({pos:(m.partOfSpeech||'').toLowerCase(), defs:defs}); });
-      if(!out.length) throw new Error('none'); return out;
-    });
   });
 }
+/* general dictionary 2 (backup): Wiktionary, which also has a lot of slang */
+function wikLookup(word){
+  return fetchJSON('https://en.wiktionary.org/w/api.php?action=parse&format=json&prop=text&redirects=1&origin=*&page='+encodeURIComponent(word), 7000).then(function(d){
+    if(!d || !d.parse || !d.parse.text) throw new Error('none');
+    var html = (typeof d.parse.text==='string') ? d.parse.text : d.parse.text['*'];
+    var doc = new DOMParser().parseFromString(html,'text/html');
+    var h = doc.getElementById('English'); if(!h) throw new Error('none');
+    var node = h.closest('.mw-heading') || h, meanings=[], pos='';
+    for(var el=node.nextElementSibling; el; el=el.nextElementSibling){
+      if(el.tagName==='H2' || (el.classList && el.classList.contains('mw-heading2'))) break;
+      if(/^H[34]$/.test(el.tagName) || (el.classList && (el.classList.contains('mw-heading3')||el.classList.contains('mw-heading4')))){ pos=(el.textContent||'').replace(/\[.*?\]/g,'').trim().toLowerCase(); continue; }
+      if(el.tagName==='OL'){
+        var defs=[];
+        Array.prototype.forEach.call(el.children,function(li){
+          if(li.tagName!=='LI') return; var c=li.cloneNode(true);
+          Array.prototype.forEach.call(c.querySelectorAll('ul,dl,ol,style,sup'),function(x){ x.remove(); });
+          var s=(c.textContent||'').replace(/\s+/g,' ').trim(); if(s) defs.push(s);
+        });
+        if(defs.length) meanings.push({pos:pos,defs:defs});
+      }
+    }
+    if(!meanings.length) throw new Error('none'); return meanings;
+  });
+}
+/* Merriam-Webster: needs a free key from dictionaryapi.com, entered once in the popup */
+function mwKey(){ try{ return localStorage.getItem('wordgame.mwkey')||''; }catch(e){ return ''; } }
+function mwLookup(word){
+  var key=mwKey(); if(!key) return Promise.reject(new Error('nokey'));
+  return fetchJSON('https://www.dictionaryapi.com/api/v3/references/collegiate/json/'+encodeURIComponent(word)+'?key='+encodeURIComponent(key), 7000).then(function(d){
+    var out=[];
+    (d||[]).forEach(function(e){
+      if(!e || typeof e!=='object' || !e.shortdef || !e.shortdef.length) return;
+      var id=String((e.meta&&e.meta.id)||'').split(':')[0].toLowerCase(), stems=(e.meta&&e.meta.stems)||[];
+      if(id===word || stems.indexOf(word)>=0) out.push({pos:e.fl||'',defs:e.shortdef});
+    });
+    if(!out.length) throw new Error('none'); return out;
+  });
+}
+/* slang: Urban Dictionary (user-written, so it can be crude) */
+function udLookup(word){
+  return fetchJSON('https://api.urbandictionary.com/v0/define?term='+encodeURIComponent(word), 7000).then(function(d){
+    var list=((d&&d.list)||[]).slice().sort(function(a,b){ return (b.thumbs_up||0)-(a.thumbs_up||0); });
+    var out=list.map(function(x){ return {def:trunc((x.definition||'').replace(/[\[\]]/g,''),240), ex:trunc((x.example||'').replace(/[\[\]]/g,''),140)}; }).filter(function(x){ return x.def; });
+    if(!out.length) throw new Error('none'); return out;
+  });
+}
+
 function openDefine(){
   var body=document.createElement('div');
   var words=[];
@@ -273282,27 +273341,58 @@ function openDefine(){
   inp.setAttribute('autocapitalize','none'); inp.setAttribute('autocomplete','off'); inp.setAttribute('autocorrect','off'); inp.setAttribute('spellcheck','false');
   var go=document.createElement('button'); go.className='btn primary defgo'; go.textContent='Look up';
   var out=document.createElement('div'); out.id='defOut';
+  var keyLink=document.createElement('button'); keyLink.className='linkbtn keylink'; keyLink.textContent = mwKey() ? 'Change Merriam-Webster key' : 'Add Merriam-Webster key';
+  var keyBox=document.createElement('div'); keyBox.className='keybox'; keyBox.style.display='none';
+  var kt=document.createElement('div'); kt.className='dl';
+  kt.appendChild(document.createTextNode('Merriam-Webster needs a free key. Get one at '));
+  var ka=document.createElement('a'); ka.href='https://dictionaryapi.com/'; ka.target='_blank'; ka.rel='noopener'; ka.textContent='dictionaryapi.com'; kt.appendChild(ka);
+  kt.appendChild(document.createTextNode(' (choose the Collegiate Dictionary), then paste it here once.'));
+  var kin=document.createElement('input'); kin.type='text'; kin.className='def-in'; kin.placeholder='Paste key'; kin.value=mwKey();
+  kin.setAttribute('autocapitalize','none'); kin.setAttribute('autocomplete','off'); kin.setAttribute('autocorrect','off'); kin.setAttribute('spellcheck','false');
+  var ksave=document.createElement('button'); ksave.className='btn primary defgo'; ksave.textContent='Save key';
+  keyBox.appendChild(kt); keyBox.appendChild(kin); keyBox.appendChild(ksave);
+  function openKey(){ keyBox.style.display='block'; kin.focus(); }
+  keyLink.addEventListener('click', function(){ keyBox.style.display = keyBox.style.display==='none' ? 'block' : 'none'; });
+  ksave.addEventListener('click', function(){
+    try{ localStorage.setItem('wordgame.mwkey', kin.value.trim()); }catch(e){}
+    keyLink.textContent='Change Merriam-Webster key'; keyBox.style.display='none'; if(inp.value) show(inp.value);
+  });
+  var srcs=[
+    {label:'Merriam-Webster', kind:'m', run:mwLookup},
+    {label:'Dictionary', kind:'m', run:function(w){ return fdLookup(w).catch(function(e1){ return wikLookup(w).catch(function(e2){ throw new Error(e1.message==='none'&&e2.message==='none' ? 'none' : (e1.message+' / '+e2.message)); }); }); }},
+    {label:'Slang (Urban Dictionary)', kind:'u', run:udLookup}
+  ];
   function show(word){
     word=(word||'').toLowerCase().replace(/[^a-z]/g,''); if(!word) return;
     inp.value=word; out.innerHTML='';
     var h=document.createElement('div'); h.className='dw'; h.textContent=word.toUpperCase(); out.appendChild(h);
     var l=document.createElement('div'); l.className='dl'; l.textContent=DICT.has(word)?'In the game\u2019s word list':'Not in the game\u2019s word list'; out.appendChild(l);
-    var st=document.createElement('div'); st.textContent='Looking up\u2026'; out.appendChild(st);
-    lookupWord(word).then(function(list){
-      if(inp.value!==word) return;
-      out.removeChild(st);
-      list.slice(0,4).forEach(function(m){
-        if(m.pos){ var p=document.createElement('div'); p.className='pos'; p.textContent=m.pos; out.appendChild(p); }
-        var ol=document.createElement('ol');
-        m.defs.slice(0,3).forEach(function(d){ var li=document.createElement('li'); li.textContent=d; ol.appendChild(li); });
-        out.appendChild(ol);
-      });
-    }, function(){
-      if(inp.value!==word) return;
-      st.textContent='No definition found. It may be slang, or there may be no internet connection. Try: ';
-      [['Merriam-Webster','https://www.merriam-webster.com/dictionary/'+word],['Wiktionary','https://en.wiktionary.org/wiki/'+word]].forEach(function(x,i){
-        if(i) st.appendChild(document.createTextNode(' or '));
-        var a=document.createElement('a'); a.href=x[1]; a.target='_blank'; a.rel='noopener'; a.textContent=x[0]; st.appendChild(a);
+    srcs.forEach(function(s){
+      var box=document.createElement('div'); box.className='src';
+      var lab=document.createElement('div'); lab.className='sl'; lab.textContent=s.label; box.appendChild(lab);
+      var sb=document.createElement('div'); sb.className='sb'; sb.textContent='Searching\u2026'; box.appendChild(sb);
+      out.appendChild(box);
+      s.run(word).then(function(res){
+        if(inp.value!==word) return; sb.textContent='';
+        if(s.kind==='u'){
+          res.slice(0,2).forEach(function(x){
+            var p=document.createElement('div'); p.className='ud'; p.textContent=x.def; sb.appendChild(p);
+            if(x.ex){ var e=document.createElement('div'); e.className='ex'; e.textContent='\u201c'+x.ex+'\u201d'; sb.appendChild(e); }
+          });
+        } else {
+          res.slice(0,3).forEach(function(m){
+            if(m.pos){ var p=document.createElement('div'); p.className='pos'; p.textContent=m.pos; sb.appendChild(p); }
+            var ol=document.createElement('ol');
+            m.defs.slice(0,2).forEach(function(d){ var li=document.createElement('li'); li.textContent=trunc(d,240); ol.appendChild(li); });
+            sb.appendChild(ol);
+          });
+        }
+      }, function(err){
+        if(inp.value!==word) return;
+        var msg=String((err&&err.message)||''); sb.className='sb none'; sb.textContent='';
+        if(msg==='nokey'){ sb.appendChild(document.createTextNode('Not searched yet. ')); var k=document.createElement('button'); k.className='linkbtn'; k.textContent='Add your free key'; k.addEventListener('click', function(){ openKey(); }); sb.appendChild(k); }
+        else if(msg==='none') sb.textContent='No entry found.';
+        else sb.textContent='Could not search this one ('+msg.slice(0,90)+').';
       });
     });
   }
@@ -273312,7 +273402,7 @@ function openDefine(){
     words.forEach(function(w){ var c=document.createElement('button'); c.className='chip'; c.textContent=w; c.addEventListener('click',function(){ show(w); }); chips.appendChild(c); });
     body.appendChild(chips);
   }
-  body.appendChild(inp); body.appendChild(go); body.appendChild(out);
+  body.appendChild(inp); body.appendChild(go); body.appendChild(out); body.appendChild(keyLink); body.appendChild(keyBox);
   go.addEventListener('click',function(){ show(inp.value); });
   inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); show(inp.value); } });
   openModal({title:'Definition', body:body, buttons:[{label:'Close'}]});
