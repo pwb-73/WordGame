@@ -59,6 +59,7 @@ img{-webkit-user-drag:none;user-drag:none}
 .tile img{width:100%;height:100%;display:block;pointer-events:none}
 .tile .bl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#9a3d12;font-size:calc(var(--cell)*.62);line-height:1;padding-bottom:6%}
 .tile.pending{z-index:2;touch-action:none;box-shadow:0 0 0 2px var(--accent),0 4px 8px rgba(0,0,0,.45)}
+.tile.pending.wordok{box-shadow:0 0 0 2px #3ddc71,0 0 14px 4px rgba(61,220,113,.85)}
 .tile.hl{z-index:3;box-shadow:0 0 0 3px #ffd54a,0 0 16px 5px rgba(255,213,74,.95);animation:hlpulse 1s ease-in-out infinite}
 #rev{position:fixed;right:calc(3px + env(safe-area-inset-right,0px));bottom:calc(4px + env(safe-area-inset-bottom,0px));writing-mode:vertical-rl;font-size:22px;font-weight:700;letter-spacing:.06em;color:#000;pointer-events:none;z-index:60;line-height:1}
 .bubble{position:absolute;z-index:6;pointer-events:none;transform:translateX(-50%);width:48px;height:48px;background:#ffd54a;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)}
@@ -120,7 +121,7 @@ img{-webkit-user-drag:none;user-drag:none}
 #bagN{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);font-size:39px;font-weight:700;line-height:1;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7);font-variant-numeric:tabular-nums}
 #actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 #actions .wide{grid-column:1 / -1}
-#actions #bRecall.wide{width:calc(3 * var(--rt) + 16px);max-width:100%;justify-self:center}
+#actions #bRecall.wide{width:calc(1.5 * var(--rt) + 8px);height:calc(1.5 * var(--rt) + 8px);min-height:0;max-width:100%;justify-self:center;padding:0;font-size:15px;line-height:1.15}
 .btn{min-height:46px;border-radius:10px;border:1.5px solid rgba(255,255,255,.55);background:transparent;color:#fff;font-size:17px;font-weight:600;padding:0 10px}
 .btn:active{background:rgba(255,255,255,.18)}
 .btn:disabled{opacity:.55}
@@ -156,9 +157,10 @@ img{-webkit-user-drag:none;user-drag:none}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px}
 .chip{min-height:40px;padding:0 14px;border-radius:20px;border:1.5px solid var(--line);background:transparent;color:var(--ink);font-weight:700;font-size:17px}
 .chip:active{background:var(--accent);color:#fff}
+.chip.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
 .chipcap{font-size:14px;color:var(--muted);margin:4px 0 2px}
 .defgo{width:100%;min-height:48px}
-#defOut{margin-top:12px;font-size:32px;line-height:1.25;color:var(--ink);max-height:52vh;overflow:auto;-webkit-overflow-scrolling:touch}
+#defOut{margin-top:12px;font-size:32px;line-height:1.25;color:var(--ink);max-height:44vh;overflow:auto;-webkit-overflow-scrolling:touch}
 #defOut .dw{font-size:22px;font-weight:700;margin-bottom:2px}
 #defOut .dl{font-size:14px;color:var(--muted);margin-bottom:8px}
 #defOut .pos{font-style:italic;color:var(--muted);margin-top:8px;font-size:16px}
@@ -201,7 +203,7 @@ img{-webkit-user-drag:none;user-drag:none}
   </div>
   <div id="modal"><div id="dlg"></div></div>
 </div>
-<div id="rev" aria-hidden="true">REV 12</div>
+<div id="rev" aria-hidden="true">REV 13</div>
 
 <script type="text/plain" id="dict">aa
 aah
@@ -272875,13 +272877,17 @@ var noClickUntil = 0;
 
 /* ---------- state ---------- */
 function emptyBoard(){ var b=[]; for(var r=0;r<15;r++){ b.push(new Array(15).fill(null)); } return b; }
-function shuffle(a){ for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+function rand01(){
+  if(window.crypto && crypto.getRandomValues){ var b=new Uint32Array(1); crypto.getRandomValues(b); return b[0]/4294967296; }
+  return Math.random();
+}
+function shuffle(a){ for(var i=a.length-1;i>0;i--){ var j=Math.floor(rand01()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
 function newGame(first){
   var bag=[], id=0;
   Object.keys(DIST).forEach(function(ch){ for(var k=0;k<DIST[ch];k++){ bag.push({id:id++,ch:ch,as:null}); } });
   shuffle(bag);
   S = { v:1, players: PLAYERS.map(function(n){ return {name:n,score:0,swapUsed:false,rack:new Array(7).fill(null)}; }),
-        bag:bag, board:emptyBoard(), pending:[], turn:first, phase:'cover', scoreless:0, log:[], lastCells:[], lastWords:[], lastScore:null };
+        bag:bag, board:emptyBoard(), pending:[], turn:first, phase:'cover', scoreless:0, log:[], lastCells:[], lastWords:[], lastScore:null, lastMain:null };
   S.players.forEach(function(p){ fillRack(p); });
   sel=null; stopFireworks(); save(); render();
 }
@@ -272976,12 +272982,17 @@ function bubblePlacement(){
 
 function render(){
   if(!S) return;
+  var okCells={};
+  if(S.phase==='play' && S.pending.length){
+    var la=analyze();
+    if(la.ok){ la.words.forEach(function(w){ if(DICT.has(w.text.toLowerCase())){ w.cells.forEach(function(c){ okCells[c[0]*15+c[1]]=true; }); } }); }
+  }
   var cells=cellsEl.children;
   for(var r=0;r<15;r++){ for(var c=0;c<15;c++){
     var el=cells[r*15+c]; el.innerHTML='';
     var b=S.board[r][c], p=pendingAt(r,c);
     if(b){ el.appendChild(tileEl(b, inHl(r,c)?'hl':'')); }
-    else if(p){ var te=tileEl(p.tile,'pending'); te.dataset.src='board'; el.appendChild(te); }
+    else if(p){ var te=tileEl(p.tile, okCells[r*15+c] ? 'pending wordok' : 'pending'); te.dataset.src='board'; el.appendChild(te); }
   }}
   Array.prototype.forEach.call(cellsEl.querySelectorAll('.bubble'), function(e){ e.remove(); });
   if(Date.now()<hlUntil && S.lastCells && S.lastCells.length && S.lastScore!=null){
@@ -273173,7 +273184,7 @@ function commit(a){
   S.pending.forEach(function(pd){ S.board[pd.r][pd.c]={ch:pd.tile.ch, as:pd.tile.as, id:pd.tile.id}; });
   S.pending=[]; p.score+=a.total; S.scoreless=0;
   var mainW=a.words.slice().sort(function(x,y){ return (y.pts-x.pts) || (y.text.length-x.text.length); })[0];
-  S.lastScore=a.total; S.lastBy=p.name; var main=mainW.text; S.lastCells=mainW.cells; S.lastWords=a.words.map(function(w){ return w.text; });
+  S.lastScore=a.total; S.lastBy=p.name; var main=mainW.text; S.lastMain=main; S.lastCells=mainW.cells; S.lastWords=a.words.map(function(w){ return w.text; });
   S.log.push({p:p.name,text:main+(a.words.length>1?' +'+(a.words.length-1):''),pts:a.total});
   fillRack(p); sel=null;
   toast(p.name+' played '+main+' for '+a.total+'.');
@@ -273372,36 +273383,6 @@ function mwLookup(word){
     if(!out.length) throw new Error('none'); return out;
   });
 }
-/* slang: Urban Dictionary (user-written, so it can be crude). Tried directly and through two public relay
-   services (in case the browser blocks the direct request); whichever answers first is used. */
-function parseUD(d){
-  var list=((d&&d.list)||[]).slice().sort(function(a,b){ return (b.thumbs_up||0)-(a.thumbs_up||0); });
-  var out=list.map(function(x){ return {def:trunc((x.definition||'').replace(/[\[\]]/g,''),240), ex:trunc((x.example||'').replace(/[\[\]]/g,''),140)}; }).filter(function(x){ return x.def; });
-  if(!out.length) throw new Error('none'); return out;
-}
-function firstOk(ps){
-  return new Promise(function(resolve,reject){
-    var left=ps.length, errs=[];
-    ps.forEach(function(p){ p.then(resolve,function(e){ errs.push(e); if(--left===0){ reject(errs.some(function(x){ return x&&x.message==='none'; }) ? new Error('none') : errs[0]); } }); });
-  });
-}
-function udLookup(word){
-  var u='https://api.urbandictionary.com/v0/define?term='+encodeURIComponent(word);
-  return firstOk([
-    fetchJSON(u,7000),
-    fetchJSON('https://api.allorigins.win/raw?url='+encodeURIComponent(u),9000),
-    fetchJSON('https://corsproxy.io/?url='+encodeURIComponent(u),9000)
-  ].map(function(p){ return p.then(parseUD); }));
-}
-/* backup for slang: the slang-labelled senses on Wiktionary */
-function wikSlang(word){
-  return wikLookup(word).then(function(list){
-    var out=[];
-    list.forEach(function(m){ var defs=m.defs.filter(function(d){ return /\b(slang|informal|colloquial|internet)\b/i.test(d); }); if(defs.length) out.push({pos:m.pos,defs:defs}); });
-    if(!out.length) throw new Error('none'); return out;
-  });
-}
-
 function openDefine(){
   var body=document.createElement('div');
   var words=[];
@@ -273432,9 +273413,6 @@ function openDefine(){
   srcs.push({label:'Dictionary', run:function(w){
     return fdLookup(w).catch(function(e1){ return wikLookup(w).catch(function(e2){ throw new Error(e1.message==='none'&&e2.message==='none' ? 'none' : (e1.message+' / '+e2.message)); }); })
       .then(function(d){ return {kind:'m',data:d}; }); }});
-  srcs.push({label:'Slang', run:function(w){
-    return udLookup(w).then(function(d){ return {kind:'u',data:d,label:'Slang (Urban Dictionary)'}; },
-      function(e){ return wikSlang(w).then(function(d){ return {kind:'m',data:d,label:'Slang (Wiktionary)'}; }, function(){ throw e; }); }); }});
   var runId=0;
   function show(word){
     word=(word||'').toLowerCase().replace(/[^a-z]/g,''); if(!word) return;
@@ -273455,7 +273433,7 @@ function openDefine(){
       var note=document.createElement('div'); note.className='sb none';
       if(!found){
         note.textContent='No definition found.'+(unreachable.length?' Could not reach: '+unreachable.join(', ')+'.':'')+' Look it up: ';
-        [['Merriam-Webster','https://www.merriam-webster.com/dictionary/'+word],['Urban Dictionary','https://www.urbandictionary.com/define.php?term='+word],['Wiktionary','https://en.wiktionary.org/wiki/'+word]].forEach(function(x,i){
+        [['Merriam-Webster','https://www.merriam-webster.com/dictionary/'+word],['Wiktionary','https://en.wiktionary.org/wiki/'+word]].forEach(function(x,i){
           if(i) note.appendChild(document.createTextNode(' \u00b7 '));
           var a=document.createElement('a'); a.href=x[1]; a.target='_blank'; a.rel='noopener'; a.textContent=x[0]; note.appendChild(a);
         });
@@ -273467,20 +273445,13 @@ function openDefine(){
     srcs.forEach(function(s,i){
       s.run(word).then(function(res){
         if(me!==runId) return;
-        var bx=boxes[i]; found++; bx.box.style.display='block'; if(res.kind==='u') bx.lab.textContent='Slang (Urban Dictionary)'; else if(res.label) bx.lab.textContent=res.label;
-        if(res.kind==='u'){
-          res.data.slice(0,2).forEach(function(x){
-            var p=document.createElement('div'); p.className='ud'; p.textContent=x.def; bx.sb.appendChild(p);
-            if(x.ex){ var e=document.createElement('div'); e.className='ex'; e.textContent='\u201c'+x.ex+'\u201d'; bx.sb.appendChild(e); }
-          });
-        } else {
-          res.data.slice(0,3).forEach(function(m){
-            if(m.pos){ var p=document.createElement('div'); p.className='pos'; p.textContent=m.pos; bx.sb.appendChild(p); }
-            var ol=document.createElement('ol');
-            m.defs.slice(0,2).forEach(function(d){ var li=document.createElement('li'); li.textContent=trunc(d,240); ol.appendChild(li); });
-            bx.sb.appendChild(ol);
-          });
-        }
+        var bx=boxes[i]; found++; bx.box.style.display='block'; if(res.label) bx.lab.textContent=res.label;
+        res.data.slice(0,3).forEach(function(m){
+          if(m.pos){ var p=document.createElement('div'); p.className='pos'; p.textContent=m.pos; bx.sb.appendChild(p); }
+          var ol=document.createElement('ol');
+          m.defs.slice(0,2).forEach(function(d){ var li=document.createElement('li'); li.textContent=trunc(d,240); ol.appendChild(li); });
+          bx.sb.appendChild(ol);
+        });
         settle();
       }, function(err){
         if(me!==runId) return;
@@ -273493,14 +273464,17 @@ function openDefine(){
   if(words.length){
     var cap=document.createElement('div'); cap.className='chipcap'; cap.textContent='Words on the board'; body.appendChild(cap);
     var chips=document.createElement('div'); chips.className='chips';
-    words.forEach(function(w){ var c=document.createElement('button'); c.className='chip'; c.textContent=w; c.addEventListener('click',function(){ show(w); }); chips.appendChild(c); });
+      var chipEls={};
+    words.forEach(function(w){ var c=document.createElement('button'); c.className='chip'; c.textContent=w; c.addEventListener('click',function(){ selectChip(w); show(w); }); chips.appendChild(c); chipEls[w]=c; });
     body.appendChild(chips);
+    var selectChip=function(w){ Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('sel', k===w); }); };
   }
   body.appendChild(inp); body.appendChild(go); body.appendChild(out); body.appendChild(keyLink); body.appendChild(keyBox);
-  go.addEventListener('click',function(){ show(inp.value); });
-  inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); show(inp.value); } });
+  go.addEventListener('click',function(){ if(typeof selectChip==='function') selectChip(inp.value.trim().toLowerCase()); show(inp.value); });
+  inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); if(typeof selectChip==='function') selectChip(inp.value.trim().toLowerCase()); show(inp.value); } });
   openModal({title:'Definition', body:body, buttons:[{label:'Close'}]});
   $('dlg').classList.add('wide');
+  if(S.lastMain){ if(typeof selectChip==='function') selectChip(S.lastMain); show(S.lastMain); }
 }
 $('bDefine').addEventListener('click', openDefine);
 
@@ -273579,7 +273553,7 @@ window.addEventListener('resize', layout);
 window.addEventListener('orientationchange', function(){ setTimeout(layout,150); });
 buildCells(); layout();
 S = load();
-if(S){ S.pending=S.pending||[]; S.lastCells=S.lastCells||[]; S.lastWords=S.lastWords||[]; S.players.forEach(function(p){ if(p.swapUsed==null) p.swapUsed=false; }); if(S.phase==='play') { /* keep letters hidden after a reload */ S.phase='cover'; } render(); if(S.phase==='over'){ /* stay on final board */ } }
+if(S){ S.pending=S.pending||[]; S.lastCells=S.lastCells||[]; S.lastWords=S.lastWords||[]; S.lastMain=S.lastMain||null; S.players.forEach(function(p){ if(p.swapUsed==null) p.swapUsed=false; }); if(S.phase==='play') { /* keep letters hidden after a reload */ S.phase='cover'; } render(); if(S.phase==='over'){ /* stay on final board */ } }
 else { S={v:1,players:PLAYERS.map(function(n){return {name:n,score:0,swapUsed:false,rack:new Array(7).fill(null)};}),bag:[],board:emptyBoard(),pending:[],turn:0,phase:'over',scoreless:0,log:[],lastCells:[],lastWords:[]}; S.phase='cover'; render(); chooseFirst(); }
 
 })();
