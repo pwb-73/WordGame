@@ -161,7 +161,7 @@ img{-webkit-user-drag:none;user-drag:none}
 .chipcap{font-size:14px;color:var(--muted);margin:4px 0 2px}
 .defgo{width:100%;min-height:48px}
 #defOut{margin-top:12px;font-size:32px;line-height:1.25;color:var(--ink);max-height:44vh;overflow:auto;-webkit-overflow-scrolling:touch}
-#defOut .dw{font-size:22px;font-weight:700;margin-bottom:2px}
+#defOut .dw{font-size:28px;font-weight:800;color:#e0b400;margin-bottom:2px}
 #defOut .dl{font-size:14px;color:var(--muted);margin-bottom:8px}
 #defOut .listline{font-size:28px;font-weight:800;color:#e0b400;margin-bottom:10px;line-height:1.15}
 #defOut .pos{font-style:italic;color:var(--muted);margin-top:8px;font-size:16px}
@@ -174,6 +174,13 @@ img{-webkit-user-drag:none;user-drag:none}
 #dlg .keylink{color:var(--muted);padding:10px 2px}
 #dlg .keybox{margin-top:4px}
 #dlg .linkbtn{color:var(--accent)}
+#distBox{background:#cfc0a0;color:#000;font-family:'Courier New',Courier,monospace;font-weight:700;border-radius:6px;padding:6px 8px;text-align:center;flex-shrink:0;width:calc(3 * var(--rt) + 16px);max-width:100%;margin:0 auto}
+#app.land #side>#distBox,#app.port #side>#distBox{width:calc(3 * var(--rt) + 16px);max-width:100%}
+#distBox .dtitle{font-size:9px;letter-spacing:.02em;margin-bottom:5px;text-align:center}
+#distBox .dcols{display:flex;justify-content:space-between}
+#distBox .dcol{text-align:left}
+#distBox .dcol div{font-size:8px;line-height:1.4}
+#distBox .dblank{margin-top:5px;font-size:8px;text-align:center}
 #defOut a{color:var(--accent);font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -200,11 +207,11 @@ img{-webkit-user-drag:none;user-drag:none}
       </div>
     </section>
     <div id="playBox"><div id="hint"></div><button class="btn primary" id="bPlay">Play</button></div>
-
+    <div id="distBox"></div>
   </div>
   <div id="modal"><div id="dlg"></div></div>
 </div>
-<div id="rev" aria-hidden="true">REV 14</div>
+<div id="rev" aria-hidden="true">REV 24</div>
 
 <script type="text/plain" id="dict">aa
 aah
@@ -273384,6 +273391,22 @@ function mwLookup(word){
     if(!out.length) throw new Error('none'); return out;
   });
 }
+function renderDistribution(){
+  var card=$('distBox'); if(!card) return; card.innerHTML='';
+  var t=document.createElement('div'); t.className='dtitle'; t.textContent='LETTER DISTRIBUTION'; card.appendChild(t);
+  var letters=Object.keys(DIST).filter(function(k){ return k!=='_'; }).sort();
+  var cols=[[],[],[]];
+  letters.forEach(function(k,i){ cols[Math.floor(i/9)].push(k); });
+  var wrap=document.createElement('div'); wrap.className='dcols';
+  cols.forEach(function(col){
+    var c=document.createElement('div'); c.className='dcol';
+    col.forEach(function(k){ var d=document.createElement('div'); d.textContent=k+'-'+DIST[k]; c.appendChild(d); });
+    wrap.appendChild(c);
+  });
+  card.appendChild(wrap);
+  var bl=document.createElement('div'); bl.className='dblank'; bl.textContent='BLANK-'+DIST['_']; card.appendChild(bl);
+}
+renderDistribution();
 function openDefine(){
   var body=document.createElement('div');
   var words=[];
