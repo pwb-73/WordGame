@@ -211,7 +211,7 @@ img{-webkit-user-drag:none;user-drag:none}
   </div>
   <div id="modal"><div id="dlg"></div></div>
 </div>
-<div id="rev" aria-hidden="true">REV 29</div>
+<div id="rev" aria-hidden="true">REV 30</div>
 
 <script type="text/plain" id="dict">aa
 aah
@@ -272890,10 +272890,29 @@ function rand01(){
   return Math.random();
 }
 function shuffle(a){ for(var i=a.length-1;i>0;i--){ var j=Math.floor(rand01()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+var VOWELS={A:1,E:1,I:1,O:1,U:1};
+// Splits tiles into vowels vs everything else, shuffles each group on its own,
+// then weaves the two shuffled groups together so vowels land evenly spaced
+// through the draw order instead of clumping or vanishing for long stretches.
+// Within each group the actual tiles are still fully random; only the
+// vowel/non-vowel timing is smoothed out.
+function balancedBag(tiles){
+  var vs=[], os=[];
+  tiles.forEach(function(t){ (VOWELS[t.ch]?vs:os).push(t); });
+  shuffle(vs); shuffle(os);
+  var order=[], vi=0, oi=0, vTot=vs.length||1, oTot=os.length||1;
+  while(vi<vs.length || oi<os.length){
+    var vFrac=vi/vTot, oFrac=oi/oTot;
+    if(oi>=os.length || (vi<vs.length && vFrac<=oFrac)){ order.push(vs[vi++]); }
+    else{ order.push(os[oi++]); }
+  }
+  order.reverse(); // so bag.pop() draws in the woven order, first draw last
+  return order;
+}
 function newGame(first){
   var bag=[], id=0;
   Object.keys(DIST).forEach(function(ch){ for(var k=0;k<DIST[ch];k++){ bag.push({id:id++,ch:ch,as:null}); } });
-  shuffle(bag);
+  bag=balancedBag(bag);
   S = { v:1, players: PLAYERS.map(function(n){ return {name:n,score:0,swapUsed:false,rack:new Array(7).fill(null)}; }),
         bag:bag, board:emptyBoard(), pending:[], turn:first, phase:'cover', scoreless:0, log:[], lastCells:[], lastWords:[], lastScore:null, lastMain:null };
   S.players.forEach(function(p){ fillRack(p); });
@@ -273208,7 +273227,7 @@ function doSwap(tiles){
   var p=cur(), n=tiles.length, got=[];
   for(var i=0;i<n;i++){ got.push(S.bag.pop()); }
   tiles.forEach(function(idx){ var t=p.rack[idx]; if(t.ch==='_') t.as=null; S.bag.push(t); p.rack[idx]=null; });
-  shuffle(S.bag);
+  S.bag=balancedBag(S.bag);
   var gi=0; tiles.forEach(function(idx){ p.rack[idx]=got[gi++]; });
   p.swapUsed=true; S.scoreless++; S.log.push({p:p.name,text:'swapped '+n+' tile'+(n===1?'':'s'),pts:0});
   if(S.scoreless>=6){ finish('stalled'); return; }
